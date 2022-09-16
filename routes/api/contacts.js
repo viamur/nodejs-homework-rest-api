@@ -6,6 +6,7 @@ const {
   addContact,
   updateContact,
 } = require('../../models/contacts');
+const { contactPutSchema, contactPostSchema } = require('../../validate');
 const { v4: uuidv4 } = require('uuid');
 
 const router = express.Router();
@@ -29,7 +30,7 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', contactPostSchema, async (req, res, next) => {
   const body = req.body;
   try {
     const newContact = await addContact({ id: uuidv4(), ...body });
@@ -49,7 +50,7 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', contactPutSchema, async (req, res, next) => {
   const { id } = req.params;
   const body = req.body;
 
