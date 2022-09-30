@@ -7,17 +7,20 @@ const SECRET_KEY = process.env.SECRET_KEY;
 
 const get = async (req, res, next) => {
   const { id } = req.user;
+  const { page, limit, favorite } = req.query;
+  const skip = parseInt(page) > 1 ? (page - 1) * limit : 0;
   try {
-    const contacts = await service.getAllContacts({ owner: id });
-    return res.status(200).json(contacts);
+    const contacts = await service.getAllContacts({ owner: id, skip, limit, favorite });
+    return res.status(200).json({ data: contacts, amount: contacts.length, page, limit });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
 const getById = async (req, res, next) => {
+  const { id } = req.user;
   try {
-    const contact = await service.getByIdContact(req.params.id);
+    const contact = await service.getByIdContact({ id: req.params.id, owner: id });
     if (contact) {
       res.status(200).json(contact);
       return;
@@ -39,8 +42,9 @@ const create = async (req, res, next) => {
 };
 
 const remove = async (req, res, next) => {
+  const { id } = req.user;
   try {
-    const data = await service.removeContact(req.params.id);
+    const data = await service.removeContact({ id: req.params.id, owner: id });
     if (data) {
       res.status(200).json({ message: 'contact deleted' });
       return;
@@ -52,6 +56,7 @@ const remove = async (req, res, next) => {
 };
 
 const update = async (req, res, next) => {
+  const owner = req.user.id;
   const { id } = req.params;
   const body = req.body;
 
@@ -61,8 +66,8 @@ const update = async (req, res, next) => {
       return;
     }
 
-    const putContact = await service.updateContact(id, body);
-    res.status(200).json({ ...putContact['_doc'], ...body });
+    const putContact = await service.updateContact({ id, body, owner });
+    res.status(200).json(putContact);
   } catch (error) {
     if (error.message.includes('Cast to ObjectId failed for value')) {
       res.status(400).json({ message: `Not found this id: ${id}` });
@@ -74,6 +79,7 @@ const update = async (req, res, next) => {
 };
 
 const favorite = async (req, res) => {
+  const owner = req.user.id;
   const { id } = req.params;
   const body = req.body;
 
@@ -83,8 +89,8 @@ const favorite = async (req, res) => {
       return;
     }
 
-    const data = await service.updateStatusContact(id, body);
-    res.status(200).json({ ...data['_doc'], ...body });
+    const data = await service.updateStatusContact({ id, body, owner });
+    res.status(200).json(data);
   } catch (error) {
     res.status(404).json({ message: 'Not found' });
   }
@@ -180,4 +186,31 @@ const current = async (req, res) => {
   }
 };
 
-module.exports = { get, getById, create, remove, update, favorite, signup, login, logout, current };
+/*=========================== CURRENT================= */
+const subscription = async (req, res) => {
+  const { id } = req.user;
+  const { subscription } = req.body;
+  try {
+    const {
+      _id,
+      email,
+      subscription: newSub,
+    } = await service.updateSubscription({ id, subscription });
+    res.status(200).json({ _id, email, subscription: newSub });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+module.exports = {
+  get,
+  getById,
+  create,
+  remove,
+  update,
+  favorite,
+  signup,
+  login,
+  logout,
+  current,
+  subscription,
+};
