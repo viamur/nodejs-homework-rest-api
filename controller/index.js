@@ -1,8 +1,14 @@
 const service = require('../service');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
+
+const SECRET_KEY = process.env.SECRET_KEY;
 
 const get = async (req, res, next) => {
+  const { id } = req.user;
   try {
-    const contacts = await service.getAllContacts();
+    const contacts = await service.getAllContacts({ owner: id });
     return res.status(200).json(contacts);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -23,8 +29,9 @@ const getById = async (req, res, next) => {
 };
 
 const create = async (req, res, next) => {
+  const { id } = req.user;
   try {
-    const newContact = await service.createContact(req.body);
+    const newContact = await service.createContact({ ...req.body, owner: id });
     res.status(201).json(newContact);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -83,4 +90,94 @@ const favorite = async (req, res) => {
   }
 };
 
-module.exports = { get, getById, create, remove, update, favorite };
+/* ---------------------------------------------------------
+---------------------------/users/------------------------ 
+-----------------------------------------------------------*/
+
+/*============================ SIGNUP==================== */
+const signup = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    /* Перевіряємо є такий користувач у БД */
+    const user = await service.validateEmail(email);
+    if (user) {
+      res.status(409).json({ message: 'Email in use' });
+      return;
+    }
+
+    /* Шифруємо пароль */
+    const hashPassword = await bcrypt.hash(password, 10);
+    /* Створюємо нового користувача */
+    const result = await service.createUser({ email, password: hashPassword });
+
+    /* Відправляємо відповідь */
+    res.status(201).json({
+      user: {
+        email: result.email,
+        subscription: 'starter',
+      },
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+/*======================= LOGIN====================== */
+const login = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    /* Проверяем есть ли такой пользователь в БД */
+    const user = await service.validateEmail(email);
+    if (!user) {
+      res.status(401).json({ message: `User not found with this email ${email}` });
+      return;
+    }
+
+    /* Проверяем пароль сходиться */
+    const checkPassword = await bcrypt.compare(password, user.password);
+    if (!checkPassword) {
+      res.status(401).json({ message: 'The password is wrong' });
+      return;
+    }
+
+    /* Создаем токен */
+    const payload = { id: user['_id'], subscription: user.subscription };
+    const token = jwt.sign(payload, SECRET_KEY, { expiresIn: '24h' });
+    /* Обновляем токен в БД */
+    const result = await service.updateUserToken({ id: user['_id'], token });
+
+    /* Отправляем ответ пользователю */
+    res.status(200).json({
+      token: result.token,
+      user: {
+        email: result.email,
+        subscription: result.subscription,
+      },
+    });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+/*=========================== LOGOUT================= */
+const logout = async (req, res) => {
+  const { id } = req.user;
+  try {
+    await service.updateUserToken({ id, token: '' });
+    res.status(204).json();
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+/*=========================== CURRENT================= */
+const current = async (req, res) => {
+  const { email, subscription } = req.user;
+  try {
+    res.status(200).json({ email, subscription });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+module.exports = { get, getById, create, remove, update, favorite, signup, login, logout, current };
