@@ -201,6 +201,18 @@ const subscription = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
+
+/*=========================== CURRENT================= */
+const avatars = async (req, res) => {
+  const { id } = req.user;
+  const { subscription } = req.body;
+  try {
+    const { avatarURL } = service;
+    res.status(200).json({ avatarURL });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
 module.exports = {
   get,
   getById,
@@ -213,4 +225,5 @@ module.exports = {
   logout,
   current,
   subscription,
+  avatars,
 };
