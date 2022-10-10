@@ -136,32 +136,34 @@ const signup = async (req, res) => {
 const login = async (req, res) => {
   const { email, password } = req.body;
   try {
-    /* Проверяем есть ли такой пользователь в БД */
+    /* Перевіряємо чи є такий користувач у БД */
     const user = await service.validateEmail(email);
     if (!user) {
       res.status(401).json({ message: `User not found with this email ${email}` });
       return;
     }
 
-    /* Проверяем пароль сходиться */
+    /* Перевіряємо пароль сходитися чи ні */
     const checkPassword = await bcrypt.compare(password, user.password);
     if (!checkPassword) {
       res.status(401).json({ message: 'The password is wrong' });
       return;
     }
 
-    /* Создаем токен */
+    /* Створюємо токен */
     const payload = { id: user['_id'], subscription: user.subscription };
     const token = jwt.sign(payload, SECRET_KEY, { expiresIn: '24h' });
-    /* Обновляем токен в БД */
+
+    /* Оновлюємо токен у БД */
     const result = await service.updateUserToken({ id: user['_id'], token });
 
-    /* Отправляем ответ пользователю */
+    /* Надсилаємо відповідь користувачу */
     res.status(200).json({
       token: result.token,
       user: {
         email: result.email,
         subscription: result.subscription,
+        avatarURL: result.avatarURL,
       },
     });
   } catch (error) {
@@ -199,8 +201,9 @@ const subscription = async (req, res) => {
       _id,
       email,
       subscription: newSub,
+      avatarURL,
     } = await service.updateSubscription({ id, subscription });
-    res.status(200).json({ _id, email, subscription: newSub });
+    res.status(200).json({ _id, email, subscription: newSub, avatarURL });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
