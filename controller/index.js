@@ -192,7 +192,7 @@ const current = async (req, res) => {
   }
 };
 
-/*=========================== CURRENT================= */
+/*=========================== subscription================= */
 const subscription = async (req, res) => {
   const { id } = req.user;
   const { subscription } = req.body;
