@@ -1,6 +1,10 @@
 const service = require('../service');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const path = require('path');
+const convertingAvatars = require('../service/convertingAvatars');
+const fs = require('fs').promises;
+
 require('dotenv').config();
 
 const SECRET_KEY = process.env.SECRET_KEY;
@@ -132,32 +136,34 @@ const signup = async (req, res) => {
 const login = async (req, res) => {
   const { email, password } = req.body;
   try {
-    /* Проверяем есть ли такой пользователь в БД */
+    /* Перевіряємо чи є такий користувач у БД */
     const user = await service.validateEmail(email);
     if (!user) {
       res.status(401).json({ message: `User not found with this email ${email}` });
       return;
     }
 
-    /* Проверяем пароль сходиться */
+    /* Перевіряємо пароль сходитися чи ні */
     const checkPassword = await bcrypt.compare(password, user.password);
     if (!checkPassword) {
       res.status(401).json({ message: 'The password is wrong' });
       return;
     }
 
-    /* Создаем токен */
+    /* Створюємо токен */
     const payload = { id: user['_id'], subscription: user.subscription };
     const token = jwt.sign(payload, SECRET_KEY, { expiresIn: '24h' });
-    /* Обновляем токен в БД */
+
+    /* Оновлюємо токен у БД */
     const result = await service.updateUserToken({ id: user['_id'], token });
 
-    /* Отправляем ответ пользователю */
+    /* Надсилаємо відповідь користувачу */
     res.status(200).json({
       token: result.token,
       user: {
         email: result.email,
         subscription: result.subscription,
+        avatarURL: result.avatarURL,
       },
     });
   } catch (error) {
@@ -186,7 +192,7 @@ const current = async (req, res) => {
   }
 };
 
-/*=========================== CURRENT================= */
+/*=========================== subscription================= */
 const subscription = async (req, res) => {
   const { id } = req.user;
   const { subscription } = req.body;
@@ -195,12 +201,46 @@ const subscription = async (req, res) => {
       _id,
       email,
       subscription: newSub,
+      avatarURL,
     } = await service.updateSubscription({ id, subscription });
-    res.status(200).json({ _id, email, subscription: newSub });
+    res.status(200).json({ _id, email, subscription: newSub, avatarURL });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
 };
+
+/*=========================== AVATARS================= */
+const avatars = async (req, res) => {
+  /* Беремо данні з request */
+  const { path: tmpDir, originalname } = req.file;
+  const { id } = req.user;
+
+  /* Генеруємо нове імʼя файлу та новий шлях  */
+  const extension = originalname.split('.').reverse()[0];
+  const newName = `${id}.${extension}`;
+  const newPathAvatar = path.join(__dirname, '../public/avatars/', newName);
+
+  try {
+    /* Функція яка обрізає зображення та зберігає його у тій же папці  */
+    await convertingAvatars({ tmpDir });
+
+    /* Переміщуємо файл в іншу директорію */
+    await fs.rename(tmpDir, newPathAvatar);
+
+    /* Оновлюємо посилання на зображення avatar в БД */
+    const { avatarURL } = await service.updateAvatar({ id, avatarURL: `/avatars/${newName}` });
+
+    /* Відсилаємо відповідь */
+    res.status(200).json({ avatarURL });
+  } catch (error) {
+    /* Видаляємо файл якщо помилка */
+    fs.unlink(tmpDir);
+
+    /* Відповідь сервера при помилки */
+    res.status(400).json({ message: error.message });
+  }
+};
+
 module.exports = {
   get,
   getById,
@@ -213,4 +253,5 @@ module.exports = {
   logout,
   current,
   subscription,
+  avatars,
 };
