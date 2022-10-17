@@ -275,6 +275,33 @@ const verify = async (req, res, next) => {
   }
 };
 
+/*=========================== VERIFY================= */
+const sendVerifyCodeAgain = async (req, res, next) => {
+  try {
+    /* Беремо email користувача с body */
+    const { email } = req.body;
+    /* Шукаємо користувача з таким email*/
+    const user = await service.validateEmail(email);
+
+    /* Якщо не знайдено то відсилаємо помилку */
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    /* Якщо верифікований користувач, теж відправляєм помилку */
+    if (user.verify) {
+      res.status(400).json({ message: 'Verification has already been passed' });
+      return;
+    }
+    /* Якщо є такий користувач і він не верифікований то знов відправляємо йому на пошту листа */
+    await sendEmailVerificationToken({ email, verificationToken: user.verificationToken });
+    /* Відправляємо користувачу успішний запит */
+    res.status(200).json({ message: 'Verification email sent' });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
 module.exports = {
   get,
   getById,
@@ -289,4 +316,5 @@ module.exports = {
   subscription,
   avatars,
   verify,
+  sendVerifyCodeAgain,
 };
