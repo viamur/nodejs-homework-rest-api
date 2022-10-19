@@ -3,7 +3,9 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const convertingAvatars = require('../service/convertingAvatars');
+const sendEmailVerificationToken = require('../service/sendGridEmail');
 const fs = require('fs').promises;
+const { v4: uuidv4 } = require('uuid');
 
 require('dotenv').config();
 
@@ -117,9 +119,13 @@ const signup = async (req, res) => {
 
     /* Шифруємо пароль */
     const hashPassword = await bcrypt.hash(password, 10);
-    /* Створюємо нового користувача */
-    const result = await service.createUser({ email, password: hashPassword });
+    /* Створюємо  verificationToken*/
+    const verificationToken = uuidv4();
 
+    /* Створюємо нового користувача */
+    const result = await service.createUser({ email, password: hashPassword, verificationToken });
+
+    await sendEmailVerificationToken({ email, verificationToken });
     /* Відправляємо відповідь */
     res.status(201).json({
       user: {
@@ -143,6 +149,13 @@ const login = async (req, res) => {
       return;
     }
 
+    /* Перевіряємо верифицирована почта чи ні */
+    if (!user.verify) {
+      res
+        .status(404)
+        .json({ message: 'Your email is not verified, please verify your email and continue' });
+      return;
+    }
     /* Перевіряємо пароль сходитися чи ні */
     const checkPassword = await bcrypt.compare(password, user.password);
     if (!checkPassword) {
@@ -241,6 +254,54 @@ const avatars = async (req, res) => {
   }
 };
 
+/*=========================== VERIFY================= */
+const verify = async (req, res, next) => {
+  try {
+    /* Витягуємо параметр запиту з адресного рядка */
+    const { verificationToken } = req.params;
+    /* Шукаємо користувача з таким  verificationToken*/
+    const user = await service.findVerificationToken({ verificationToken });
+    /* Якщо не знайдено то відсилаємо помилку */
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    /* Якщо є такий користувач то  verificationToken в null, а поле verify  =  true */
+    await service.findUserIDandUpdateVerify({ id: user.id });
+    /* Відправляємо користувачу успішний запит */
+    res.status(200).json({ message: 'Verification successful' });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+/*=========================== VERIFY================= */
+const sendVerifyCodeAgain = async (req, res, next) => {
+  try {
+    /* Беремо email користувача с body */
+    const { email } = req.body;
+    /* Шукаємо користувача з таким email*/
+    const user = await service.validateEmail(email);
+
+    /* Якщо не знайдено то відсилаємо помилку */
+    if (!user) {
+      res.status(404).json({ message: 'User not found' });
+      return;
+    }
+    /* Якщо верифікований користувач, теж відправляєм помилку */
+    if (user.verify) {
+      res.status(400).json({ message: 'Verification has already been passed' });
+      return;
+    }
+    /* Якщо є такий користувач і він не верифікований то знов відправляємо йому на пошту листа */
+    await sendEmailVerificationToken({ email, verificationToken: user.verificationToken });
+    /* Відправляємо користувачу успішний запит */
+    res.status(200).json({ message: 'Verification email sent' });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
 module.exports = {
   get,
   getById,
@@ -254,4 +315,6 @@ module.exports = {
   current,
   subscription,
   avatars,
+  verify,
+  sendVerifyCodeAgain,
 };
